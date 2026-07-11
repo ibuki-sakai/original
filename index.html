@@ -3,64 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>無限ガチャシミュレーター</title>
+    <title>超豪華！無限ガチャシミュレーター</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- 紙吹雪用の軽量ライブラリを導入 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        @keyframes bounce-custom {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+        /* SSRの虹色グラデーションアニメーション */
+        @keyframes rainbow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
-        .animate-bounce-custom {
-            animation: bounce-custom 0.3s ease infinite;
+        .animate-ssr {
+            background-size: 200% 200%;
+            animation: rainbow 2s linear infinite, bounce-custom 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes bounce-custom {
+            0% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(-8px) scale(1.05); }
+        }
+        /* 画面フラッシュ */
+        @keyframes flash {
+            0% { opacity: 0; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0; }
+        }
+        .ssr-flash {
+            animation: flash 0.4s ease-out;
+        }
+        /* カードの出現アニメーション */
+        @keyframes pop-in {
+            0% { opacity: 0; transform: scale(0.7) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .card-appear {
+            animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col items-center justify-center p-4 overflow-x-hidden">
 
-    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl p-6 border border-slate-700 text-center">
-        <h1 class="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-rose-500">
-            🌟 無限ガチャ 🌟
+    <!-- 演出用レイヤー（SSRを引いた時に画面が一瞬光る） -->
+    <div id="flash-overlay" class="fixed inset-0 bg-amber-400 pointer-events-none opacity-0 z-50"></div>
+
+    <div class="w-full max-w-md bg-slate-900/80 backdrop-blur-md rounded-3xl shadow-2xl p-6 border border-slate-800 text-center relative z-10">
+        
+        <!-- タイトル部分も発光強化 -->
+        <h1 class="text-3xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+            ✨ 神引き無限ガチャ ✨
         </h1>
-        <p class="text-xs text-slate-400 mb-6">確率：SSR 3% / SR 12% / R 85%</p>
+        <p class="text-[10px] text-slate-500 tracking-widest uppercase mb-6">Probability: SSR 3% / SR 12% / R 85%</p>
 
-        <!-- カウンター -->
-        <div class="grid grid-cols-4 gap-2 mb-6 bg-slate-900/50 p-3 rounded-xl border border-slate-700/50 text-sm">
-            <div><div class="text-slate-400 text-xs">総数</div><div id="count-total" class="font-bold text-lg text-white">0</div></div>
-            <div><div class="text-amber-400 text-xs">SSR</div><div id="count-ssr" class="font-bold text-lg text-amber-400">0</div></div>
-            <div><div class="text-purple-400 text-xs">SR</div><div id="count-sr" class="font-bold text-lg text-purple-400">0</div></div>
-            <div><div class="text-sky-400 text-xs">R</div><div id="count-r" class="font-bold text-lg text-sky-400">0</div></div>
+        <!-- ステータスカウンター -->
+        <div class="grid grid-cols-4 gap-2 mb-6 bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-sm shadow-inner">
+            <div><div class="text-slate-500 text-xs">🔥 回数</div><div id="count-total" class="font-bold text-lg text-white">0</div></div>
+            <div><div class="text-amber-400 text-xs">👑 SSR</div><div id="count-ssr" class="font-bold text-lg text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]">0</div></div>
+            <div><div class="text-purple-400 text-xs">🔮 SR</div><div id="count-sr" class="font-bold text-lg text-purple-400">0</div></div>
+            <div><div class="text-sky-400 text-xs">⚔️ R</div><div id="count-r" class="font-bold text-lg text-sky-400">0</div></div>
         </div>
 
-        <!-- ガチャ結果表示エリア -->
-        <div id="result-container" class="min-h-[160px] flex flex-wrap gap-2 justify-center items-center p-4 bg-slate-950 rounded-xl mb-6 border border-slate-800 transition-all">
-            <p id="placeholder" class="text-slate-500 text-sm animate-pulse">ボタンを押してガチャを回そう！</p>
+        <!-- ガチャ結果エリア（スクロール可能に強化） -->
+        <div id="result-container" class="min-h-[200px] max-h-[320px] overflow-y-auto flex flex-wrap gap-2.5 justify-center items-center p-4 bg-slate-950/50 rounded-2xl mb-6 border border-slate-800/80 shadow-inner custom-scrollbar">
+            <p id="placeholder" class="text-slate-600 text-sm animate-pulse tracking-wider">── 運命のボタンを押せ ──</p>
         </div>
 
-        <!-- 操作ボタン -->
-        <div class="flex gap-3">
-            <button onclick="pullGacha(1)" class="flex-1 py-4 bg-gradient-to-r from-slate-700 to-slate-600 hover:from-slate-600 hover:to-slate-500 text-white font-bold rounded-xl shadow-lg transform active:scale-95 transition cursor-pointer">
-                1回引く
+        <!-- 決定ボタン（グラデーションとホバー強化） -->
+        <div class="flex flex-col gap-3">
+            <button onclick="pullGacha(10)" class="w-full py-4 bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:from-amber-400 hover:via-rose-400 hover:to-purple-500 text-white font-black text-lg rounded-2xl shadow-xl shadow-rose-500/20 transform active:scale-95 transition-all duration-150 cursor-pointer tracking-wider border border-white/10">
+                🚀 豪華10連ガチャを引く！
             </button>
-            <button onclick="pullGacha(10)" class="flex-1 py-4 bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white font-extrabold rounded-xl shadow-lg shadow-rose-500/20 transform active:scale-95 transition cursor-pointer">
-                🔥 10連引く
+            <button onclick="pullGacha(1)" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm rounded-xl transform active:scale-95 transition-all duration-150 cursor-pointer">
+                1回だけ引く
             </button>
         </div>
 
-        <!-- リセットボタン -->
-        <button onclick="resetGacha()" class="mt-6 text-xs text-slate-500 hover:text-slate-300 underline cursor-pointer">
-            データをリセットする
+        <!-- リセット -->
+        <button onclick="resetGacha()" class="mt-6 text-[11px] text-slate-600 hover:text-rose-400 transition underline cursor-pointer tracking-wide">
+            全戦績をゼロにリセットする
         </button>
     </div>
 
     <script>
-        // ガチャのデータ設定
+        // ガチャのデザイン・演出定義
         const ITEM_POOL = {
-            SSR: { name: "🌈 レア度：SSR", chance: 0.03, bg: "bg-gradient-to-r from-amber-400 to-rose-400 text-slate-900 font-black border-2 border-amber-300 shadow-lg shadow-amber-500/20" },
-            SR: { name: "🔮 レア度：SR", chance: 0.12, bg: "bg-purple-600 text-white font-bold border border-purple-400" },
-            R: { name: "⚔️ レア度：R", chance: 0.85, bg: "bg-slate-700 text-slate-300 text-xs" }
+            SSR: { 
+                name: "👑 SSR 神レジェンド", 
+                chance: 0.03, 
+                bg: "bg-gradient-to-r from-amber-400 via-rose-400 to-indigo-400 text-slate-950 font-black shadow-[0_0_20px_rgba(251,191,36,0.6)] border-2 border-amber-200 animate-ssr" 
+            },
+            SR: { 
+                name: "🔮 SR エピック", 
+                chance: 0.12, 
+                bg: "bg-gradient-to-br from-purple-700 to-indigo-900 text-purple-100 font-extrabold border border-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.3)]" 
+            },
+            R: { 
+                name: "⚔️ R ノーマル", 
+                chance: 0.85, 
+                bg: "bg-slate-800/90 text-slate-400 text-xs border border-slate-700/50" 
+            }
         };
 
-        // カウンターの初期化
         let stats = { total: 0, SSR: 0, SR: 0, R: 0 };
 
         function pullGacha(times) {
@@ -68,7 +110,10 @@
             const placeholder = document.getElementById('placeholder');
             
             if (placeholder) placeholder.remove();
-            container.innerHTML = ''; // 前回の結果をクリア
+            container.innerHTML = ''; // リセット
+
+            let hasSSR = false;
+            let hasSR = false;
 
             for (let i = 0; i < times; i++) {
                 const rand = Math.random();
@@ -76,25 +121,42 @@
 
                 if (rand < ITEM_POOL.SSR.chance) {
                     rarity = 'SSR';
+                    hasSSR = true;
                 } else if (rand < ITEM_POOL.SSR.chance + ITEM_POOL.SR.chance) {
                     rarity = 'SR';
+                    hasSR = true;
                 }
 
-                // カウントアップ
                 stats.total++;
                 stats[rarity]++;
 
-                // 画面に表示する要素の作成
-                const badge = document.createElement('div');
-                badge.className = `${ITEM_POOL[rarity].bg} px-3 py-2 rounded-lg text-sm text-center flex-1 min-w-[80px] max-w-[120px] transition-all duration-300`;
-                badge.innerText = ITEM_POOL[rarity].name;
-                
-                // SSRを引いた時にちょっと跳ねさせる演出
-                if (rarity === 'SSR') {
-                    badge.classList.add('animate-bounce-custom');
-                }
+                // カード風要素の生成
+                const card = document.createElement('div');
+                card.className = `${ITEM_POOL[rarity].bg} px-3 py-3 rounded-xl text-xs text-center flex-1 min-w-[100px] max-w-[130px] card-appear opacity-0`;
+                // 10連の時にズレて出現するようディレイをかける
+                card.style.animationDelay = `${i * 0.04}s`;
+                card.innerText = ITEM_POOL[rarity].name;
 
-                container.appendChild(badge);
+                container.appendChild(card);
+            }
+
+            // --- 脳汁演出の着火 ---
+            if (hasSSR) {
+                // 1. 画面フラッシュ
+                const flash = document.getElementById('flash-overlay');
+                flash.classList.add('ssr-flash');
+                setTimeout(() => flash.classList.remove('ssr-flash'), 400);
+
+                // 2. 派手な紙吹雪（ドカンと2発）
+                confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#fbbf24', '#f43f5e', '#6366f1', '#ffffff'] });
+                setTimeout(() => {
+                    confetti({ particleCount: 80, angle: 60, spread: 55, origin: { x: 0 } });
+                    confetti({ particleCount: 80, angle: 120, spread: 55, origin: { x: 1 } });
+                }, 150);
+
+            } else if (hasSR) {
+                // SR用のちょっと嬉しい紙吹雪
+                confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 }, colors: ['#a855f7', '#6366f1'] });
             }
 
             updateDOM();
@@ -110,8 +172,7 @@
         function resetGacha() {
             stats = { total: 0, SSR: 0, SR: 0, R: 0 };
             updateDOM();
-            const container = document.getElementById('result-container');
-            container.innerHTML = '<p id="placeholder" class="text-slate-500 text-sm animate-pulse">ボタンを押してガチャを回そう！</p>';
+            document.getElementById('result-container').innerHTML = '<p id="placeholder" class="text-slate-600 text-sm animate-pulse tracking-wider">── 運命のボタンを押せ ──</p>';
         }
     </script>
 </body>
